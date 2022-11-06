@@ -1,68 +1,66 @@
 <template v-if="props.data.length">
   <div
-    id="root-filter"
     class="filter"
   >
     <h1>Filter</h1>
     <div class="toggle">
       <slot
         name="toggle"
-        :toggle-handler="toggleStateDropContent"
+        :toggle-handler="toggleVisibilityFilterList"
       >
         <input
           v-model="search"
           class="toggle__input"
           placeholder="search..."
-          @click="toggleStateDropContent"
+          @click="toggleVisibilityFilterList"
         >
       </slot>
     </div>
     <div
-      v-show="isShowFilterList"
+      v-show="isVisibleFilterList"
+      id="filter-list"
+      ref="filterList"
       class="filter-list"
     >
       <div
-        v-for="option of filteredOptions"
+        v-for="option of searchData"
         :key="option.id"
         class="filter-list__option"
-        :class="selectedOptions[option.id] ? 'selected' : ''"
+        :class="selectedFilters[option.id] ? 'selected' : ''"
+        @click="updateSelectedFilters(option)"
       >
-        <slot name="option">
-          <input
-            :id="option.id"
-            :value="option.todo"
-            :checked="!!selectedOptions[option.id]"
-            type="checkbox"
-            class="filter-item__input"
-            @change="updateSelectedOptions(option)"
-          >
+        <slot
+          name="option"
+          :option="option"
+        >
           <div>
             {{ option.completed }}
           </div>
-          <label
-            :for="option.id"
-            class="filter-item__label"
-          >
+          <div>
             {{ option.todo }}
-          </label>
+          </div>
         </slot>
       </div>
     </div>
     <div
-      v-show="!isShowFilterList"
-      class="filter-list"
+      v-show="isVisibleSelectedFilter"
+      class="filter-list filter-list_selected"
     >
       <div
-        v-for="(option, key) in selectedOptions"
+        v-for="(option, key) in selectedFilters"
         :key="key"
-        class="sn"
+        class="filter-list__option filter-list__option_selected"
       >
-        <slot name="selectedOption">
+        <slot
+          name="selectedOption"
+          :option="option"
+          :remove-handler="updateSelectedFilters"
+        >
+          <div>{{ option.todo }}</div>
           <button
-            @click="updateSelectedOptions(option)"
+            @click="updateSelectedFilters(option)"
           >
-            {{ option.id }}
-            &cross;
+            x
           </button>
         </slot>
       </div>
@@ -74,7 +72,7 @@
   import {
     ref, defineProps, computed, watch,
   } from 'vue';
-  import useEvent from '../use/useEvent';
+  import useHandlerOutsideTarget from '../use/useHandlerOutsideTarget';
 
   const props = defineProps({
     data: {
@@ -87,43 +85,56 @@
     },
   });
 
-
   const search = ref('');
 
-  const filterOptions = () => {
+  const processSearch = () => {
     const processedString = `^${search.value.replace(/\\/g, '\\\\')}`;
-    const regExp = new RegExp(processedString, 'i');
-    return props.data.filter((item) => item[props.searchingByField].match(regExp));
+    return new RegExp(processedString, 'i');
   };
 
-  const filteredOptions = computed(() => (search.value ? filterOptions() : props.data));
+  const filteredData = computed(() => {
+    const processedSearch = processSearch();
+    return props.data.filter((item) => item[props.searchingByField].match(processedSearch));
+  });
+
+  const searchData = computed(() => (search.value ? filteredData.value : props.data));
 
 
+  const isVisibleFilterList = ref(false);
 
-  const isShowFilterList = ref(false);
-
-  const toggleStateDropContent = () => {
-    isShowFilterList.value = !isShowFilterList.value;
-  };
-
-  const closeFilterList = () => {
-    isShowFilterList.value = false;
+  const resetSearchState = (evt) => {
+    evt.target.blur();
     search.value = '';
   };
 
-  const {initEvent, removeEvent} = useEvent('#root-filter', closeFilterList);
+  const toggleVisibilityFilterList = (evt) => {
+    if (evt.defaultPrevented) return;
+    evt.preventDefault();
+    isVisibleFilterList.value = !isVisibleFilterList.value;
+    if (!isVisibleFilterList.value) {
+      resetSearchState(evt);
+    }
+  };
 
-  watch(() => isShowFilterList.value, (value) => (value ? initEvent() : removeEvent()));
+
+  const filterList = ref(null);
+  
+  const {setHandler, removeHandler} = useHandlerOutsideTarget(filterList, toggleVisibilityFilterList);
+
+  watch(() => isVisibleFilterList.value, (value) => {
+    value ? setHandler() : removeHandler();
+  });
 
 
+  const selectedFilters = ref({});
 
-  const selectedOptions = ref({});
+  const isVisibleSelectedFilter = computed(() => Object.keys(selectedFilters.value).length && !isVisibleFilterList.value);
 
-  const updateSelectedOptions = (filter) => {
-    if (selectedOptions.value[filter.id]) {
-      delete selectedOptions.value[filter.id];
+  const updateSelectedFilters = (filter) => {
+    if (selectedFilters.value[filter.id]) {
+      delete selectedFilters.value[filter.id];
     } else {
-      selectedOptions.value[filter.id] = filter;
+      selectedFilters.value[filter.id] = filter;
     }
   };
 
@@ -132,12 +143,11 @@
 <style scoped lang="scss">
 .filter {
   display: grid;
+  width: 400px;
+  padding: 1rem;
   row-gap: 1rem;
-}
-
-.drop-content {
-  display: grid;
-  row-gap: 1rem;
+  border: 1px solid #4d65f5;
+  border-radius: 10px;
 }
 
 .toggle {
@@ -146,23 +156,52 @@
     border: 1px solid #4d65f5;
     outline-color: #4d65f5;
     border-radius: 10px;
-    font-size: 1em;
   }
 }
+
 .filter-list {
   display: grid;
-  width: 350px;
-  row-gap: .5rem;
-  max-height: 500px;
-  overflow: auto;
+  gap: .5rem;
+  max-height: 300px;
+  overflow-y: auto;
+  box-sizing: border-box;
+  box-shadow: 0 5px 15px 0 rgb(0 0 0 / 30%), 0 0 0 1px rgb(0 0 0 / 5%);
+  padding: 20px 30px;
+  border-radius: 10px;
+
+  &_selected {
+    display: flex;
+    flex-wrap: wrap;
+  }
+
+  &::-webkit-scrollbar {
+    background-color: gray;
+    border-radius: 10px;
+    width: 3px;
+    height: 3px;
+  }
+
+  &::-webkit-scrollbar-thumb {
+    background-color: #4d65f5;
+  }
 
   &__option {
     display: flex;
-    column-gap: 1rem;
+    box-sizing: border-box;
+    column-gap: .5rem;
     align-items: center;
-    padding: .3rem;
-    width: 100%;
+    justify-content: center;
+    padding: .3rem 1rem;
     border-radius: 15px;
+    cursor: pointer;
+    border: 1px solid #4d65f5;
+
+    &_selected {
+      justify-content: space-between;
+      column-gap: .4rem;
+      padding: .3rem;
+      cursor: auto;
+    }
   }
 }
 

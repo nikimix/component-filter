@@ -15,9 +15,8 @@ body {
 
 button {
   background-color: transparent;
-  border-radius: 8px;
+  border-radius: 50%;
   border: 1px solid blueviolet;
-  padding: .5rem;
   font-size: 1em;
   font-family: inherit;
   cursor: pointer;
@@ -35,6 +34,9 @@ img {
 }
 
 #app {
+  display: grid;
+  padding: 1rem;
+  row-gap: 1rem;
   max-width: 1280px;
   margin: auto;
   text-align: center;
